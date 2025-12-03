@@ -1,0 +1,20 @@
+{
+  "resourceLogs": [
+    {
+      "resource": { "attributes": [] },
+      "scopeLogs": [
+        {
+          "scope": { "name": "test" },
+          "logRecords": [
+            {
+              "timeUnixNano": "0",
+              "severityNumber": 9,
+              "severityText": "Info",
+              "body": { "stringValue": "Hello" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

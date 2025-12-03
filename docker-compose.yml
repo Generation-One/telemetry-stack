@@ -1,0 +1,130 @@
+services:
+  # Pomerium reverse proxy with Google OAuth
+  # Access admin panels via:
+  #   https://grafana.localhost
+  #   https://jaeger.localhost
+  #   https://seq.localhost
+
+  pomerium:
+    container_name: pomerium
+    image: pomerium/pomerium:latest
+    depends_on:
+      - pomerium-config
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - pomerium_config:/pomerium
+    environment:
+      # Google OAuth credentials - set these in .env file
+      - JWT_CLAIMS_HEADERS=email
+      - IDP_PROVIDER=${POMERIUM_IDP_PROVIDER}
+      - IDP_CLIENT_ID=${POMERIUM_IDP_CLIENT_ID}
+      - IDP_CLIENT_SECRET=${POMERIUM_IDP_CLIENT_SECRET}
+      - COOKIE_SECRET=${POMERIUM_COOKIE_SECRET}
+      - SIGNING_KEY=${POMERIUM_SIGNING_KEY}
+      # Domains consumed by pomerium-config.yaml
+      - POMERIUM_AUTHENTICATE_DOMAIN=${POMERIUM_AUTHENTICATE_DOMAIN:-authenticate.localhost}
+      - GRAFANA_DOMAIN=${GRAFANA_DOMAIN:-grafana.localhost}
+      - JAEGER_DOMAIN=${JAEGER_DOMAIN:-jaeger.localhost}
+      - SEQ_DOMAIN=${SEQ_DOMAIN:-seq.localhost}
+    restart: unless-stopped
+
+  pomerium-config:
+    image: alpine
+    env_file: .env
+    volumes:
+      - ./pomerium.template.yaml:/config-template/pomerium.template.yaml
+      - pomerium_config:/config
+    command: >
+      sh -c "
+        apk add --no-cache gettext &&
+        envsubst < /config-template/pomerium.template.yaml > /config/config.yaml
+      "
+
+  # Protected by Pomerium - access via https://jaeger.localhost
+  jaeger-all-in-one:
+    container_name: jaeger
+    image: jaegertracing/all-in-one
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - QUERY_BASE_PATH=${JAEGER_BASE_PATH:-/}
+    ports:
+      - "4318:4317"   # OTLP receiver - keep exposed for telemetry ingestion
+    restart: unless-stopped
+
+  # http://localhost:9090/
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_configs:/etc/prometheus
+    restart: unless-stopped
+
+  # Protected by Pomerium - access via https://grafana.localhost
+  grafana:
+    container_name: grafana
+    image: grafana/grafana-oss
+    volumes:
+      - grafana_storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_DOMAIN:-grafana.localhost}
+      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN:-grafana.localhost}
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      # Auth handled by Pomerium - use proxy auth with identity headers
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_AUTO_ASSIGN_ORG=true
+      - GF_USERS_AUTO_ASSIGN_ORG_ROLE=Admin
+      - GF_AUTH_PROXY_ENABLED=true
+      - GF_AUTH_PROXY_HEADER_NAME=X-Pomerium-Claim-Email
+      - GF_AUTH_PROXY_HEADER_PROPERTY=email
+      - GF_AUTH_PROXY_AUTO_SIGN_UP=true
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN=false
+      - GF_AUTH_DISABLE_SIGNOUT_MENU=true
+    restart: unless-stopped
+    
+  seq:
+    image: datalust/seq:latest
+    container_name: seq
+    environment:
+      - ACCEPT_EULA=Y
+    ports:
+      - "5342:5341"   # ingestion endpoint - keep exposed for log ingestion
+    restart: unless-stopped
+  
+  # kibana:
+  #   container_name: kibana
+  #   image: docker.elastic.co/kibana/kibana:8.15.2
+  #   ports:
+  #     - "5601:5601"
+  #   restart: unless-stopped
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    privileged: true
+    environment:
+      - OTEL_LOG_LEVEL=debug
+      - LOG_LEVEL=debug
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./logs.json:/etc/output/logs.json:rw
+    ports:
+      - "55679:55679" # zPages
+      - "8888:8888"   # Prometheus metrics exposed by the collector
+      - "8889:8889"   # Prometheus exporter metrics
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4319:4318"   # OTLP http receiver
+    restart: unless-stopped
+      
+volumes: 
+  pomerium_config:
+  grafana_storage:
+  elasticsearch_data:
+  prometheus_configs:
+  otel_configs:
+  otel_outputs:

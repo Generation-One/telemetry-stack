@@ -1,0 +1,74 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        include_metadata: true
+        endpoint: 0.0.0.0:4318
+
+
+extensions:
+  zpages:
+    endpoint: 0.0.0.0:55679
+# Configure exporters
+exporters:
+  otlphttp/seq:
+    endpoint: "http://seq:5341/ingest/otlp"
+    compression: none
+    tls:
+      insecure: true
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+  debug:
+    verbosity: detailed
+
+  otlphttp/jaeger:
+    endpoint: "http://jaeger:4317"
+    tls:
+      insecure: true
+
+  file:
+    path: /etc/output/logs.json
+
+
+processors:
+  attributes/fromheaders:
+    actions:
+      - action: upsert
+        key: user.id
+        from_context: metadata.x-user-id
+
+      - action: upsert
+        key: node.id
+        from_context: metadata.x-node-id
+
+  filter/drop_missing_ids:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'attributes["user.id"] == nil'
+        - 'attributes["node.id"] == nil'
+
+# Configure pipelines. Pipeline defines a path the data follows in the Collector
+# starting from reception, then further processing or modification and finally
+# exiting the Collector via exporters.
+# https://opentelemetry.io/docs/collector/configuration/#service
+# https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/design.md#pipelines
+service:
+  extensions: [zpages]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes/fromheaders, filter/drop_missing_ids]
+      exporters: [debug, otlphttp/jaeger]
+    metrics/otlp:
+      receivers: [otlp]
+      processors: [attributes/fromheaders, filter/drop_missing_ids]
+      exporters: [debug, prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [attributes/fromheaders, filter/drop_missing_ids]
+      exporters: [debug, otlphttp/seq]

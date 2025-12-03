@@ -1,0 +1,15 @@
+services:
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    privileged: true
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./otel-logs.json:/etc/output/otel-logs.json:rw
+      - ./otel-traces.json:/etc/output/otel-traces.json:rw
+      - ./otel-metrics.json:/etc/output/otel-metrics.json:rw
+    ports:
+      - "4357:4317"   # OTLP gRPC receiver
+      - "4359:4318"   # OTLP http receiver
+    restart: unless-stopped

@@ -1,0 +1,49 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu:
+      memory:
+      load:
+      process:
+      processes:
+      paging:
+      network:
+      filesystem:
+
+exporters:
+  otlpjsonfile/logs:
+    path: /etc/output/logs-logs.json
+
+  file/traces:
+    path: /etc/output/otel-traces.json
+
+  file/metrics:
+    path: /etc/output/otel-metrics.json
+
+  # file/logs:
+  #   path: /etc/output/otel-logs.json
+
+processors:
+  batch:
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: []
+      exporters: [file/traces]
+    metrics:
+      receivers: [otlp]
+      processors: []
+      exporters: [file/metrics]
+    logs:
+      receivers: [otlp]
+      processors: []
+      exporters: [otlpjsonfile/logs]
