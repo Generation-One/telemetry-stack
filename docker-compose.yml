@@ -16,20 +16,19 @@ services:
     volumes:
       - pomerium_config:/pomerium
     environment:
-      # Google OAuth credentials - set these in .env file
       - JWT_CLAIMS_HEADERS=email
       - IDP_PROVIDER=${POMERIUM_IDP_PROVIDER}
       - IDP_CLIENT_ID=${POMERIUM_IDP_CLIENT_ID}
       - IDP_CLIENT_SECRET=${POMERIUM_IDP_CLIENT_SECRET}
       - COOKIE_SECRET=${POMERIUM_COOKIE_SECRET}
       - SIGNING_KEY=${POMERIUM_SIGNING_KEY}
-      # Domains consumed by pomerium-config.yaml
       - POMERIUM_AUTHENTICATE_DOMAIN=${POMERIUM_AUTHENTICATE_DOMAIN:-authenticate.localhost}
       - GRAFANA_DOMAIN=${GRAFANA_DOMAIN:-grafana.localhost}
       - JAEGER_DOMAIN=${JAEGER_DOMAIN:-jaeger.localhost}
       - SEQ_DOMAIN=${SEQ_DOMAIN:-seq.localhost}
     restart: unless-stopped
 
+  # rewrite config template with env
   pomerium-config:
     image: alpine
     env_file: .env
@@ -49,8 +48,6 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
       - QUERY_BASE_PATH=${JAEGER_BASE_PATH:-/}
-    ports:
-      - "4318:4317"   # OTLP receiver - keep exposed for telemetry ingestion
     restart: unless-stopped
 
   # http://localhost:9090/
@@ -91,17 +88,8 @@ services:
     container_name: seq
     environment:
       - ACCEPT_EULA=Y
-    ports:
-      - "5342:5341"   # ingestion endpoint - keep exposed for log ingestion
     restart: unless-stopped
-  
-  # kibana:
-  #   container_name: kibana
-  #   image: docker.elastic.co/kibana/kibana:8.15.2
-  #   ports:
-  #     - "5601:5601"
-  #   restart: unless-stopped
-
+    
   # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib
@@ -115,10 +103,8 @@ services:
       - ./logs.json:/etc/output/logs.json:rw
     ports:
       - "55679:55679" # zPages
-      - "8888:8888"   # Prometheus metrics exposed by the collector
-      - "8889:8889"   # Prometheus exporter metrics
       - "4317:4317"   # OTLP gRPC receiver
-      - "4319:4318"   # OTLP http receiver
+      - "4318:4318"   # OTLP http receiver
     restart: unless-stopped
       
 volumes: 
