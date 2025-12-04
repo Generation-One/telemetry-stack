@@ -5,41 +5,38 @@ services:
   #   https://jaeger.localhost
   #   https://seq.localhost
 
-  pomerium:
-    container_name: pomerium
-    image: pomerium/pomerium:latest
-    depends_on:
-      - pomerium-config
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - pomerium_config:/pomerium
-    environment:
-      - JWT_CLAIMS_HEADERS=email
-      - IDP_PROVIDER=${POMERIUM_IDP_PROVIDER}
-      - IDP_CLIENT_ID=${POMERIUM_IDP_CLIENT_ID}
-      - IDP_CLIENT_SECRET=${POMERIUM_IDP_CLIENT_SECRET}
-      - COOKIE_SECRET=${POMERIUM_COOKIE_SECRET}
-      - SIGNING_KEY=${POMERIUM_SIGNING_KEY}
-      - POMERIUM_AUTHENTICATE_DOMAIN=${POMERIUM_AUTHENTICATE_DOMAIN:-authenticate.localhost}
-      - GRAFANA_DOMAIN=${GRAFANA_DOMAIN:-grafana.localhost}
-      - JAEGER_DOMAIN=${JAEGER_DOMAIN:-jaeger.localhost}
-      - SEQ_DOMAIN=${SEQ_DOMAIN:-seq.localhost}
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    container_name: oauth2-proxy
     restart: unless-stopped
+    ports:
+      - "4180:4180"
+    environment:
+      OAUTH2_PROXY_PROVIDER: google
+      OAUTH2_PROXY_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
 
-  # rewrite config template with env
-  pomerium-config:
-    image: alpine
-    env_file: .env
-    volumes:
-      - ./pomerium.template.yaml:/config-template/pomerium.template.yaml
-      - pomerium_config:/config
-    command: >
-      sh -c "
-        apk add --no-cache gettext &&
-        envsubst < /config-template/pomerium.template.yaml > /config/config.yaml
-      "
+      # Cookie signing secret (32 bytes base64)
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_COOKIE_SECRET}
+
+      # Allow any Google account or restrict with `@domain.com`
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+
+      # OAuth callback domain
+      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_REDIRECT_URL}
+
+      # So oauth2-proxy can trust the NPM proxy
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      OAUTH2_PROXY_WHITELIST_DOMAINS: ${OAUTH2_PROXY_WHITELIST_DOMAINS}
+
+      # Cookie settings
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
+      OAUTH2_PROXY_COOKIE_DOMAINS: ${OAUTH2_PROXY_WHITELIST_DOMAINS}
+
+    command:
+      - --http-address=0.0.0.0:4180
+
 
   # Protected by Pomerium - access via https://jaeger.localhost
   jaeger-all-in-one:
