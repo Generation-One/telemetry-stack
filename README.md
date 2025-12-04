@@ -75,7 +75,21 @@ JAEGER_DOMAIN=jaeger.localhost
 SEQ_DOMAIN=seq.localhost
 ```
 
-### 2. Start the stack
+### 2. Create data directories
+
+```bash
+mkdir -p data/prometheus data/jaeger data/seq
+```
+
+Or configure custom paths in `.env`:
+
+```bash
+PROMETHEUS_DATA_PATH=./data/prometheus
+JAEGER_DATA_PATH=./data/jaeger
+SEQ_DATA_PATH=./data/seq
+```
+
+### 3. Start the stack
 
 ```bash
 docker compose up -d
