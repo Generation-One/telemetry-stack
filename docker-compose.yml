@@ -88,8 +88,12 @@ services:
     container_name: seq
     environment:
       - ACCEPT_EULA=Y
+      - SEQ_REVERSEPROXY_AUTHENTICATION=true
+      - SEQ_REVERSEPROXY_USERHEADER=X-Pomerium-Jwt-Email
+      - SEQ_REVERSEPROXY_NAMEHEADER=X-Pomerium-Jwt-Name
+      - SEQ_REVERSEPROXY_TRUSTEDPROXIES=0.0.0.0/0
     restart: unless-stopped
-    
+
   # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib
@@ -100,7 +104,6 @@ services:
       - LOG_LEVEL=debug
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-      - ./logs.json:/etc/output/logs.json:rw
     ports:
       - "55679:55679" # zPages
       - "4317:4317"   # OTLP gRPC receiver

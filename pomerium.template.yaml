@@ -26,11 +26,7 @@ routes:
   - from: https://${GRAFANA_DOMAIN}
     to: http://grafana:3000
     pass_identity_headers: true
-    policy:
-      - allow:
-          or:
-            - domain:
-                is: generation.one
+    allow_any_authenticated_user: true
 
   # Jaeger - access via https://${JAEGER_DOMAIN}
   - from: https://${JAEGER_DOMAIN}
@@ -43,15 +39,10 @@ routes:
     to: http://seq:80
     pass_identity_headers: true
     allow_any_authenticated_user: true
-
-# Optional: Restrict access to specific domains or emails
-# Add policy to any route above:
-#
-# policy:
-#   - allow:
-#       or:
-#         - domain:
-#             is: yourdomain.com
-#         - email:
-#             is: specific-user@gmail.com
-
+    jwt_claims_headers:
+      - email
+      - name
+    set_request_headers:
+      X-Forwarded-Email: "${pomerium.jwt.claim.email}"
+      X-Forwarded-User: "${pomerium.jwt.claim.email}"
+      X-Forwarded-Name: "${pomerium.jwt.claim.name}"
