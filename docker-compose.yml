@@ -48,6 +48,8 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
       - QUERY_BASE_PATH=${JAEGER_BASE_PATH:-/}
+    volumes:
+      - jaeger_data:/badger
     restart: unless-stopped
 
   # http://localhost:9090/
@@ -57,6 +59,7 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_configs:/etc/prometheus
+      - prometheus_data:/prometheus
     restart: unless-stopped
 
   # Protected by Pomerium - access via https://grafana.localhost
@@ -92,6 +95,8 @@ services:
       - SEQ_REVERSEPROXY_USERHEADER=X-Pomerium-Jwt-Email
       - SEQ_REVERSEPROXY_NAMEHEADER=X-Pomerium-Jwt-Name
       - SEQ_REVERSEPROXY_TRUSTEDPROXIES=0.0.0.0/0
+    volumes:
+      - seq_data:/data
     restart: unless-stopped
 
   # OpenTelemetry Collector
@@ -110,10 +115,25 @@ services:
       - "4318:4318"   # OTLP http receiver
     restart: unless-stopped
       
-volumes: 
+volumes:
   pomerium_config:
   grafana_storage:
-  elasticsearch_data:
   prometheus_configs:
-  otel_configs:
-  otel_outputs:
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PROMETHEUS_DATA_PATH:-./data/prometheus}
+  jaeger_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${JAEGER_DATA_PATH:-./data/jaeger}
+  seq_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${SEQ_DATA_PATH:-./data/seq}
