@@ -63,7 +63,7 @@ OAUTH2_PROXY_PROVIDER=google
 OAUTH2_PROXY_CLIENT_ID=your-client-id
 OAUTH2_PROXY_CLIENT_SECRET=your-client-secret
 
-# Generate with: head -c32 /dev/urandom | base64
+# Generate with: head -c32 /dev/urandom | base64 (openssl rand -base64 32)
 OAUTH2_COOKIE_SECRET=your-base64-cookie-secret
 
 # OAuth callback URL
