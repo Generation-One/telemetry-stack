@@ -13,11 +13,8 @@ extensions:
     endpoint: 0.0.0.0:55679
 # Configure exporters
 exporters:
-  otlphttp/seq:
-    endpoint: "http://seq:5341/ingest/otlp"
-    compression: none
-    tls:
-      insecure: true
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
   prometheus:
     endpoint: 0.0.0.0:8889
@@ -25,16 +22,14 @@ exporters:
   debug:
     verbosity: detailed
 
-  otlphttp/jaeger:
-    endpoint: "http://jaeger:4317"
+  otlphttp/tempo:
+    endpoint: http://tempo:4318
     tls:
       insecure: true
 
-  file:
-    path: /etc/output/logs.json
-
-
 processors:
+  batch:
+  # example: how to populate attributes from header
   attributes/fromheaders:
     actions:
       - action: upsert
@@ -45,6 +40,7 @@ processors:
         key: node.id
         from_context: metadata.x-node-id
 
+  # example: how to filter
   filter/drop_missing_ids:
     error_mode: ignore
     logs:
@@ -52,23 +48,34 @@ processors:
         - 'attributes["user.id"] == nil'
         - 'attributes["node.id"] == nil'
 
-# Configure pipelines. Pipeline defines a path the data follows in the Collector
-# starting from reception, then further processing or modification and finally
-# exiting the Collector via exporters.
-# https://opentelemetry.io/docs/collector/configuration/#service
-# https://github.com/open-telemetry/opentelemetry-collector/blob/main/docs/design.md#pipelines
+connectors:
+  servicegraph:
+    latency_histogram_buckets: [100ms, 250ms, 1s, 5s, 10s]
+    virtual_node_peer_attributes:
+      - server.address
+    dimensions:
+      - service.name
+      - server.address
+    store:
+      ttl: 2m
+      max_items: 20000
+
 service:
   extensions: [zpages]
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes/fromheaders, filter/drop_missing_ids]
-      exporters: [debug, otlphttp/jaeger]
+      processors: [batch]
+      exporters: [otlphttp/tempo, servicegraph]
     metrics/otlp:
       receivers: [otlp]
-      processors: [attributes/fromheaders, filter/drop_missing_ids]
-      exporters: [debug, prometheus]
+      processors: []
+      exporters: [prometheus]
+    metrics/servicegraph:
+      receivers: [servicegraph]
+      processors: []
+      exporters: [prometheus]
     logs:
       receivers: [otlp]
-      processors: [attributes/fromheaders, filter/drop_missing_ids]
-      exporters: [debug, otlphttp/seq]
+      processors: []
+      exporters: [debug, otlphttp/loki]

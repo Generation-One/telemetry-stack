@@ -2,8 +2,6 @@ services:
   # Pomerium reverse proxy with Google OAuth
   # Access admin panels via:
   #   https://grafana.localhost
-  #   https://jaeger.localhost
-  #   https://seq.localhost
 
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
@@ -12,41 +10,54 @@ services:
     ports:
       - "4180:4180"
     environment:
-      OAUTH2_PROXY_PROVIDER: google
-      OAUTH2_PROXY_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      OAUTH2_PROXY_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      OAUTH2_PROXY_PROVIDER: ${OAUTH2_PROXY_PROVIDER}
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET}
 
       # Cookie signing secret (32 bytes base64)
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_COOKIE_SECRET}
 
       # Allow any Google account or restrict with `@domain.com`
       OAUTH2_PROXY_EMAIL_DOMAINS: "*"
-
       # OAuth callback domain
       OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_REDIRECT_URL}
 
       # So oauth2-proxy can trust the NPM proxy
       OAUTH2_PROXY_REVERSE_PROXY: "true"
-      OAUTH2_PROXY_WHITELIST_DOMAINS: ${OAUTH2_PROXY_WHITELIST_DOMAINS}
+      OAUTH2_PROXY_WHITELIST_DOMAINS: ${OAUTH2_PROXY_ALLOWED_DOMAINS}
 
       # Cookie settings
       OAUTH2_PROXY_COOKIE_SECURE: "true"
       OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
-      OAUTH2_PROXY_COOKIE_DOMAINS: ${OAUTH2_PROXY_WHITELIST_DOMAINS}
+      OAUTH2_PROXY_COOKIE_DOMAINS: ${OAUTH2_PROXY_ALLOWED_DOMAINS}
 
     command:
       - --http-address=0.0.0.0:4180
+      - --set-xauthrequest=true
 
-
-  # Protected by Pomerium - access via https://jaeger.localhost
-  jaeger-all-in-one:
-    container_name: jaeger
-    image: jaegertracing/all-in-one
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-      - QUERY_BASE_PATH=${JAEGER_BASE_PATH:-/}
+  # Protected by Pomerium - access via https://grafana.localhost
+  grafana:
+    container_name: grafana
+    image: grafana/grafana-oss
+    ports:
+      - "3005:3000"
     volumes:
-      - jaeger_data:/badger
+      - grafana_storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SERVER_ROOT_URL=https://${GRAFANA_DOMAIN:-grafana.localhost}
+      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN:-grafana.localhost}
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_AUTO_ASSIGN_ORG=true
+      - GF_USERS_AUTO_ASSIGN_ORG_ROLE=Admin
+      - GF_AUTH_PROXY_ENABLED=true
+      - GF_AUTH_PROXY_HEADER_NAME=X-Forwarded-Email
+      - GF_AUTH_PROXY_HEADER_PROPERTY=email
+      - GF_AUTH_PROXY_AUTO_SIGN_UP=true
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN=false
+      - GF_AUTH_DISABLE_SIGNOUT_MENU=true
     restart: unless-stopped
 
   # http://localhost:9090/
@@ -58,47 +69,39 @@ services:
       - prometheus_configs:/etc/prometheus
       - prometheus_data:/prometheus
     restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=2d'
 
-  # Protected by Pomerium - access via https://grafana.localhost
-  grafana:
-    container_name: grafana
-    image: grafana/grafana-oss
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
     volumes:
-      - grafana_storage:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-    environment:
-      - GF_SERVER_ROOT_URL=https://${GRAFANA_DOMAIN:-grafana.localhost}
-      - GF_SERVER_DOMAIN=${GRAFANA_DOMAIN:-grafana.localhost}
-      - GF_SERVER_SERVE_FROM_SUB_PATH=false
-      # Auth handled by Pomerium - use proxy auth with identity headers
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_USERS_AUTO_ASSIGN_ORG=true
-      - GF_USERS_AUTO_ASSIGN_ORG_ROLE=Admin
-      - GF_AUTH_PROXY_ENABLED=true
-      - GF_AUTH_PROXY_HEADER_NAME=X-Pomerium-Claim-Email
-      - GF_AUTH_PROXY_HEADER_PROPERTY=email
-      - GF_AUTH_PROXY_AUTO_SIGN_UP=true
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
-      - GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN=false
-      - GF_AUTH_DISABLE_SIGNOUT_MENU=true
+      - ./data/loki_storage:/tmp/loki
+      - loki_data:/loki
+      - ./loki-config.yaml:/etc/loki/local-config.yaml
     restart: unless-stopped
-    
-  seq:
-    image: datalust/seq:latest
-    container_name: seq
-    environment:
-      - ACCEPT_EULA=Y
-      - SEQ_REVERSEPROXY_AUTHENTICATION=true
-      - SEQ_REVERSEPROXY_USERHEADER=X-Pomerium-Jwt-Email
-      - SEQ_REVERSEPROXY_NAMEHEADER=X-Pomerium-Jwt-Name
-      - SEQ_REVERSEPROXY_TRUSTEDPROXIES=0.0.0.0/0
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    command:
+      - -config.file=/etc/tempo/tempo-config.yaml
+      - -target=all
     volumes:
-      - seq_data:/data
+      - ./tempo-config.yaml:/etc/tempo/tempo-config.yaml:ro
+      - tempo_data:/tmp/tempo   # WAL + local blocks
+    ports:
+      - "3200:3200"   # Tempo HTTP API (Grafana uses this)
     restart: unless-stopped
 
   # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib
+    container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
     privileged: true
     environment:
@@ -113,7 +116,6 @@ services:
     restart: unless-stopped
       
 volumes:
-  pomerium_config:
   grafana_storage:
   prometheus_configs:
   prometheus_data:
@@ -122,15 +124,15 @@ volumes:
       type: none
       o: bind
       device: ${PROMETHEUS_DATA_PATH:-./data/prometheus}
-  jaeger_data:
+  loki_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${JAEGER_DATA_PATH:-./data/jaeger}
-  seq_data:
+      device: ${LOKI_DATA_PATH:-./data/loki}
+  tempo_data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${SEQ_DATA_PATH:-./data/seq}
+      device: ${TEMPO_DATA_PATH:-./data/tempo}    

@@ -1,0 +1,74 @@
+auth_enabled: false
+
+server:
+  # HTTP API for Grafana (Tempo data source)
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc: 
+          endpoint: "tempo:4317"  # :4317
+        http: 
+          endpoint: "tempo:4318"  # :4318
+
+ingester:
+  # Reasonable dev values; tweak later for prod
+  trace_idle_period: 10s
+  max_block_bytes: 1000000
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    compaction_window: 1h
+    max_compaction_objects: 1000000
+    block_retention: 2h
+    compacted_block_retention: 10m
+
+querier:
+  # Default is fine; section here just to be explicit
+  max_concurrent_queries: 20
+
+# --- Storage for traces (where Tempo keeps WAL + blocks) ---
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /tmp/tempo/wal
+    local:
+      path: /tmp/tempo/blocks
+    pool:
+      max_workers: 100
+      queue_depth: 10000
+
+# --- Memberlist is used for the generator ring in this minimal setup ---
+memberlist:
+  abort_if_cluster_join_fails: false
+
+# --- Metrics generator: required for TraceQL metrics (rate(), count_over_time, etc.) ---
+metrics_generator:
+  # Use memberlist KV for the generator ring
+  ring:
+    kvstore:
+      store: memberlist
+
+  # WAL for metrics-generator
+  storage:
+    path: /tmp/tempo/generator/wal
+
+  # Local copy of traces for local-blocks processor
+  traces_storage:
+    path: /tmp/tempo/generator/traces
+
+  # How often to build metrics, and for how long they stay “fresh”
+  registry:
+    collection_interval: 15s
+    stale_duration: 15m
+
+# --- Per-tenant overrides; defaults apply to all tenants ---
+overrides:
+  defaults:
+    metrics_generator:
+      # IMPORTANT: this enables TraceQL metrics from local blocks
+      processors: [local-blocks]

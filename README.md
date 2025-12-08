@@ -69,7 +69,6 @@ POMERIUM_COOKIE_SECRET=your-base64-cookie-secret
 POMERIUM_SIGNING_KEY=your-base64-signing-key
 
 # Optional: Custom domains (defaults shown)
-POMERIUM_AUTHENTICATE_DOMAIN=authenticate.localhost
 GRAFANA_DOMAIN=grafana.localhost
 JAEGER_DOMAIN=jaeger.localhost
 SEQ_DOMAIN=seq.localhost
@@ -85,8 +84,6 @@ Or configure custom paths in `.env`:
 
 ```bash
 PROMETHEUS_DATA_PATH=./data/prometheus
-JAEGER_DATA_PATH=./data/jaeger
-SEQ_DATA_PATH=./data/seq
 ```
 
 ### 3. Start the stack
