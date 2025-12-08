@@ -119,7 +119,17 @@ services:
 volumes:
   grafana_storage:
   prometheus_configs:
-  loki_configs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PROMETHEUS_CONFIG_PATH:-./data/prometheus_configs}
+  loki_configs: 
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${LOKI_CONFIG_PATH:-./data/loki_configs}
   prometheus_data:
     driver: local
     driver_opts:
