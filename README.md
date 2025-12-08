@@ -6,7 +6,7 @@ A complete observability stack with OpenTelemetry Collector, Tempo, Prometheus, 
 
 ```
 ┌─────────────────┐      ┌──────────────────────┐
-│  Applications   │─────▶│  OpenTelemetry       │
+│  Applications   │─────►│  OpenTelemetry       │
 │  (OTLP)         │      │  Collector           │
 └─────────────────┘      │  :4317 (gRPC)        │
                          │  :4318 (HTTP)        │
