@@ -81,7 +81,8 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     volumes:
       - ./data/loki_storage:/tmp/loki
-      - loki_data:/loki
+      - loki_configs:/loki
+      - loki_data:/tmp/loki
       - ./loki-config.yaml:/etc/loki/local-config.yaml
     restart: unless-stopped
 
@@ -118,6 +119,7 @@ services:
 volumes:
   grafana_storage:
   prometheus_configs:
+  loki_configs:
   prometheus_data:
     driver: local
     driver_opts:
