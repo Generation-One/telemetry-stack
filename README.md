@@ -1,6 +1,6 @@
 # Telemetry Stack
 
-A complete observability stack with OpenTelemetry Collector, Jaeger, Prometheus, Grafana, and Seq — secured behind Pomerium reverse proxy with OAuth authentication.
+A complete observability stack with OpenTelemetry Collector, Tempo, Prometheus, Grafana, and Loki — secured behind OAuth2-Proxy with OAuth authentication.
 
 ## Architecture
 
@@ -15,39 +15,38 @@ A complete observability stack with OpenTelemetry Collector, Jaeger, Prometheus,
               ┌─────────────────────┼─────────────────────┐
               ▼                     ▼                     ▼
       ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-      │    Jaeger     │     │  Prometheus   │     │     Seq       │
+      │    Tempo      │     │  Prometheus   │     │     Loki      │
       │   (Traces)    │     │   (Metrics)   │     │    (Logs)     │
       └───────┬───────┘     └───────┬───────┘     └───────┬───────┘
               │                     │                     │
-              │                     ▼                     │
-              │             ┌───────────────┐             │
-              │             │    Grafana    │             │
-              │             │ (Dashboards)  │             │
-              │             └───────┬───────┘             │
-              │                     │                     │
               └─────────────────────┼─────────────────────┘
                                     ▼
+                            ┌───────────────┐
+                            │    Grafana    │
+                            │ (Dashboards)  │
+                            └───────┬───────┘
+                                    │
+                                    ▼
                          ┌─────────────────────┐
-                         │     Pomerium        │
+                         │    OAuth2-Proxy     │
                          │   (OAuth Proxy)     │
-                         │    :80 / :443       │
+                         │       :4180         │
                          └─────────────────────┘
                                     │
-          ┌─────────────────────────┼─────────────────────────┐
-          ▼                         ▼                         ▼
-   jaeger.localhost         grafana.localhost          seq.localhost
+                                    ▼
+                           grafana.localhost
 ```
 
 ## Components
 
 | Service | Purpose | Access URL |
 |---------|---------|------------|
-| **Pomerium** | OAuth reverse proxy | Handles authentication |
+| **OAuth2-Proxy** | OAuth reverse proxy | `localhost:4180` |
 | **OpenTelemetry Collector** | Telemetry ingestion | `localhost:4317` (gRPC), `localhost:4318` (HTTP) |
-| **Jaeger** | Distributed tracing | `https://jaeger.localhost` |
-| **Prometheus** | Metrics storage | `localhost:9090` (internal) |
-| **Grafana** | Dashboards & visualization | `https://grafana.localhost` |
-| **Seq** | Structured log management | `https://seq.localhost` |
+| **Tempo** | Distributed tracing | `localhost:3200` (internal) |
+| **Prometheus** | Metrics storage | Internal (scraped by Grafana) |
+| **Loki** | Log aggregation | `localhost:3100` (internal) |
+| **Grafana** | Dashboards & visualization | `https://grafana.localhost` (via OAuth2-Proxy) |
 
 ## Prerequisites
 
@@ -59,31 +58,33 @@ A complete observability stack with OpenTelemetry Collector, Jaeger, Prometheus,
 ### 1. Create `.env` file
 
 ```bash
-# Identity Provider (google, azure, github, okta, etc.)
-POMERIUM_IDP_PROVIDER=google
-POMERIUM_IDP_CLIENT_ID=your-client-id
-POMERIUM_IDP_CLIENT_SECRET=your-client-secret
+# Identity Provider (google, azure, github, etc.)
+OAUTH2_PROXY_PROVIDER=google
+OAUTH2_PROXY_CLIENT_ID=your-client-id
+OAUTH2_PROXY_CLIENT_SECRET=your-client-secret
 
 # Generate with: head -c32 /dev/urandom | base64
-POMERIUM_COOKIE_SECRET=your-base64-cookie-secret
-POMERIUM_SIGNING_KEY=your-base64-signing-key
+OAUTH2_COOKIE_SECRET=your-base64-cookie-secret
 
-# Optional: Custom domains (defaults shown)
+# OAuth callback URL
+OAUTH2_PROXY_REDIRECT_URL=https://grafana.localhost/oauth2/callback
+
+# Allowed domains
+OAUTH2_PROXY_ALLOWED_DOMAINS=.localhost
+
+# Optional: Custom Grafana domain (default shown)
 GRAFANA_DOMAIN=grafana.localhost
-JAEGER_DOMAIN=jaeger.localhost
-SEQ_DOMAIN=seq.localhost
+
+# Optional: Custom data paths (defaults shown)
+PROMETHEUS_DATA_PATH=./data/prometheus
+LOKI_DATA_PATH=./data/loki
+TEMPO_DATA_PATH=./data/tempo
 ```
 
 ### 2. Create data directories
 
 ```bash
-mkdir -p data/prometheus data/jaeger data/seq
-```
-
-Or configure custom paths in `.env`:
-
-```bash
-PROMETHEUS_DATA_PATH=./data/prometheus
+mkdir -p data/prometheus data/loki data/tempo data/grafana
 ```
 
 ### 3. Start the stack
@@ -101,16 +102,6 @@ Configure your applications to send OTLP data to the collector:
 | gRPC | `localhost:4317` |
 | HTTP | `localhost:4318` |
 
-### Required Headers
-
-The collector expects these headers for proper data routing:
-
-```
-x-user-id: <user identifier>
-x-node-id: <node identifier>
-```
-
-Records missing these headers will be filtered out.
 
 ### Example: .NET Application
 
@@ -124,10 +115,9 @@ builder.Services.AddOpenTelemetry()
 
 ## Data Flow
 
-- **Traces** → OpenTelemetry Collector → Jaeger
+- **Traces** → OpenTelemetry Collector → Tempo → Grafana
 - **Metrics** → OpenTelemetry Collector → Prometheus → Grafana
-- **Logs** → OpenTelemetry Collector → Seq
-
+- **Logs** → OpenTelemetry Collector → Loki → Grafana
 
 ## Test Data
 
