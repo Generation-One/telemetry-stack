@@ -1,6 +1,6 @@
 # Telemetry Stack
 
-A complete observability stack with OpenTelemetry Collector, Tempo, Prometheus, Grafana, and Loki — secured behind OAuth2-Proxy with OAuth authentication.
+A complete observability stack with OpenTelemetry Collector, Tempo, Prometheus, Grafana, and Loki — secured behind OAuth2-Proxy with Google OAuth.
 
 ## Architecture
 
@@ -26,54 +26,67 @@ A complete observability stack with OpenTelemetry Collector, Tempo, Prometheus, 
                             │ (Dashboards)  │
                             └───────┬───────┘
                                     │
-                                    ▼
-                         ┌─────────────────────┐
-                         │    OAuth2-Proxy     │
-                         │   (OAuth Proxy)     │
-                         │       :4180         │
+                         ┌──────────┴──────────┐
+                         │      nginx          │
+                         │  (reverse proxy)    │
+                         ├─────────────────────┤
+                         │ /api/* → direct     │
+                         │   (Bearer token)    │
+                         │ /* → OAuth2-Proxy   │
+                         │   (Google sign-in)  │
                          └─────────────────────┘
-                                    │
-                                    ▼
-                           grafana.localhost
 ```
 
 ## Components
 
 | Service | Purpose | Access URL |
 |---------|---------|------------|
-| **OAuth2-Proxy** | OAuth reverse proxy | `localhost:4180` |
+| **OAuth2-Proxy** | Google OAuth for UI access | `localhost:4180` |
 | **OpenTelemetry Collector** | Telemetry ingestion | `localhost:4317` (gRPC), `localhost:4318` (HTTP) |
 | **Tempo** | Distributed tracing | `localhost:3200` (internal) |
 | **Prometheus** | Metrics storage | Internal (scraped by Grafana) |
 | **Loki** | Log aggregation | `localhost:3100` (internal) |
-| **Grafana** | Dashboards & visualization | `https://grafana.localhost` (via OAuth2-Proxy) |
+| **Grafana** | Dashboards & visualization | `https://grafana.observability.generation.one` |
 
 ## Prerequisites
 
 - Docker and Docker Compose
-- OAuth provider credentials (Google, Azure AD, etc.)
+- Google OAuth credentials
+- nginx with certbot SSL
+
+## Authentication
+
+### UI Access (humans)
+Google OAuth via oauth2-proxy. All routes except `/api/` require sign-in.
+
+### API Access (machines)
+Grafana service account tokens (`glsa_...`) are passed directly to Grafana, bypassing OAuth. Create tokens via Grafana UI (Administration → Service Accounts).
+
+The nginx config in `nginx/` separates these paths:
+- `/api/*` → proxied direct to Grafana (Bearer token auth)
+- `/*` → proxied via oauth2-proxy (Google OAuth)
 
 ## Setup
 
 ### 1. Create `.env` file
 
 ```bash
-# Identity Provider (google, azure, github, etc.)
+# Identity Provider
 OAUTH2_PROXY_PROVIDER=google
 OAUTH2_PROXY_CLIENT_ID=your-client-id
 OAUTH2_PROXY_CLIENT_SECRET=your-client-secret
 
-# Generate with: head -c32 /dev/urandom | base64 (openssl rand -base64 32)
+# Generate with: openssl rand -base64 32
 OAUTH2_COOKIE_SECRET=your-base64-cookie-secret
 
 # OAuth callback URL
-OAUTH2_PROXY_REDIRECT_URL=https://grafana.localhost/oauth2/callback
+OAUTH2_PROXY_REDIRECT_URL=https://grafana.observability.generation.one/oauth2/callback
 
 # Allowed domains
-OAUTH2_PROXY_ALLOWED_DOMAINS=.localhost
+OAUTH2_PROXY_ALLOWED_DOMAINS=.observability.generation.one
 
-# Optional: Custom Grafana domain (default shown)
-GRAFANA_DOMAIN=grafana.localhost
+# Grafana domain
+GRAFANA_DOMAIN=grafana.observability.generation.one
 
 # Optional: Custom data paths (defaults shown)
 PROMETHEUS_DATA_PATH=./data/prometheus
@@ -87,7 +100,15 @@ TEMPO_DATA_PATH=./data/tempo
 mkdir -p data/prometheus data/loki data/tempo data/grafana
 ```
 
-### 3. Start the stack
+### 3. Install nginx configs
+
+```bash
+sudo cp nginx/*.conf /etc/nginx/sites-available/
+sudo ln -sf /etc/nginx/sites-available/*.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 4. Start the stack
 
 ```bash
 docker compose up -d
@@ -101,7 +122,6 @@ Configure your applications to send OTLP data to the collector:
 |----------|----------|
 | gRPC | `localhost:4317` |
 | HTTP | `localhost:4318` |
-
 
 ### Example: .NET Application
 
@@ -121,10 +141,15 @@ builder.Services.AddOpenTelemetry()
 
 ## Test Data
 
-Sample OTLP payloads are available in the `test-data/` directory:
-- `otel-logs.json`
-- `otel-metrics.json`
-- `otel-traces.json`
+Sample OTLP payloads are available in the `test-data/` directory.
+
+## Nginx Configs
+
+The `nginx/` directory contains the reverse proxy configs for all services:
+- `grafana.observability.generation.one.conf` — Grafana (OAuth + API token passthrough)
+- `auth.observability.generation.one.conf` — OAuth2-Proxy callback
+- `ingest.observability.generation.one.conf` — OTLP ingestion endpoint
+- `stands.observability.generation.one.conf` — StandPanel
 
 ## License
 
