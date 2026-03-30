@@ -76,6 +76,15 @@ spec:
         app.kubernetes.io/component: tempo
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      securityContext:
+        fsGroup: 10001
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ["sh", "-c", "chown -R 10001:10001 /tmp/tempo"]
+          volumeMounts:
+            - name: data
+              mountPath: /tmp/tempo
       containers:
         - name: tempo
           image: {{ .Values.tempo.image }}
