@@ -1,0 +1,87 @@
+{{- if .Values.oauth2Proxy.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "telemetry.fullname" . }}-oauth2-proxy
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: oauth2-proxy
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: oauth2-proxy
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: {{ .Values.oauth2Proxy.image }}
+          args:
+            - --http-address=0.0.0.0:4180
+            - --set-xauthrequest=true
+          ports:
+            - containerPort: 4180
+          env:
+            - name: OAUTH2_PROXY_PROVIDER
+              value: {{ .Values.oauth2Proxy.provider | quote }}
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "telemetry.fullname" . }}-oauth2
+                  key: client-id
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "telemetry.fullname" . }}-oauth2
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "telemetry.fullname" . }}-oauth2
+                  key: cookie-secret
+            - name: OAUTH2_PROXY_REDIRECT_URL
+              value: {{ .Values.oauth2Proxy.redirectUrl | quote }}
+            - name: OAUTH2_PROXY_EMAIL_DOMAINS
+              value: {{ .Values.oauth2Proxy.emailDomains | quote }}
+            - name: OAUTH2_PROXY_REVERSE_PROXY
+              value: "true"
+            - name: OAUTH2_PROXY_WHITELIST_DOMAINS
+              value: {{ .Values.oauth2Proxy.allowedDomains | quote }}
+            - name: OAUTH2_PROXY_COOKIE_SECURE
+              value: "true"
+            - name: OAUTH2_PROXY_COOKIE_SAMESITE
+              value: "lax"
+            - name: OAUTH2_PROXY_COOKIE_DOMAINS
+              value: {{ .Values.oauth2Proxy.allowedDomains | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "telemetry.fullname" . }}-oauth2-proxy
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 4180
+      targetPort: 4180
+  selector:
+    app.kubernetes.io/component: oauth2-proxy
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "telemetry.fullname" . }}-oauth2
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  client-id: {{ .Values.oauth2Proxy.clientId | quote }}
+  client-secret: {{ .Values.oauth2Proxy.clientSecret | quote }}
+  cookie-secret: {{ .Values.oauth2Proxy.cookieSecret | quote }}
+{{- end }}

@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "telemetry.fullname" . }}-otel-config
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            include_metadata: true
+            endpoint: 0.0.0.0:4318
+    extensions:
+      zpages:
+        endpoint: 0.0.0.0:55679
+    exporters:
+      otlphttp/loki:
+        endpoint: http://{{ include "telemetry.fullname" . }}-loki:3100/otlp
+      prometheus:
+        endpoint: 0.0.0.0:8889
+      debug:
+        verbosity: detailed
+      otlphttp/tempo:
+        endpoint: http://{{ include "telemetry.fullname" . }}-tempo:4318
+        tls:
+          insecure: true
+    processors:
+      batch:
+    connectors:
+      servicegraph:
+        latency_histogram_buckets: [100ms, 250ms, 1s, 5s, 10s]
+        virtual_node_peer_attributes:
+          - server.address
+        dimensions:
+          - service.name
+          - server.address
+        store:
+          ttl: 2m
+          max_items: 20000
+    service:
+      extensions: [zpages]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlphttp/tempo, servicegraph]
+        metrics/otlp:
+          receivers: [otlp]
+          processors: []
+          exporters: [prometheus]
+        metrics/servicegraph:
+          receivers: [servicegraph]
+          processors: []
+          exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: []
+          exporters: [debug, otlphttp/loki]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "telemetry.fullname" . }}-otel-collector
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+spec:
+  replicas: {{ .Values.otelCollector.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: otel-collector
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: otel-collector
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: otel-collector
+          image: {{ .Values.otelCollector.image }}
+          args: ["--config=/etc/otel-collector-config.yaml"]
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+            - containerPort: 8889
+              name: prometheus
+            - containerPort: 55679
+              name: zpages
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel-collector-config.yaml
+              subPath: otel-collector-config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "telemetry.fullname" . }}-otel-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "telemetry.fullname" . }}-otel-collector
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 4317
+      targetPort: 4317
+      name: otlp-grpc
+    - port: 4318
+      targetPort: 4318
+      name: otlp-http
+    - port: 8889
+      targetPort: 8889
+      name: prometheus
+  selector:
+    app.kubernetes.io/component: otel-collector
+    app.kubernetes.io/instance: {{ .Release.Name }}

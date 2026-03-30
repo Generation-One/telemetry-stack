@@ -1,0 +1,5 @@
+apiVersion: v2
+name: telemetry-stack
+description: Observability stack — Grafana, Prometheus, Loki, Tempo, OTel Collector
+version: 0.1.0
+type: application
