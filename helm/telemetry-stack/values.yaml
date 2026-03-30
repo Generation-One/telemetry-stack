@@ -1,0 +1,62 @@
+# Grafana
+grafana:
+  image: grafana/grafana-oss:latest
+  replicas: 1
+  storage: 5Gi
+  domain: metrics.agnt.generation.one
+  auth:
+    proxy:
+      enabled: true
+      headerName: X-Forwarded-Email
+
+# Prometheus
+prometheus:
+  image: prom/prometheus:latest
+  replicas: 1
+  storage: 10Gi
+  retention: 2d
+  scrapeInterval: 5s
+
+# Loki
+loki:
+  image: grafana/loki:latest
+  replicas: 1
+  storage: 20Gi
+  retention: 30d
+
+# Tempo
+tempo:
+  image: grafana/tempo:latest
+  replicas: 1
+  storage: 10Gi
+  blockRetention: 2h
+
+# OpenTelemetry Collector
+otelCollector:
+  image: otel/opentelemetry-collector-contrib:latest
+  replicas: 1
+
+# OAuth2 Proxy (optional — disable if using external auth)
+oauth2Proxy:
+  enabled: true
+  image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+  provider: ""
+  clientId: ""
+  clientSecret: ""
+  cookieSecret: ""
+  redirectUrl: ""
+  allowedDomains: ""
+  emailDomains: "*"
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+  host: metrics.agnt.generation.one
+  tlsEnabled: true
+  tlsSecretName: ""
+  clusterIssuer: letsencrypt-dns01
+
+# Persistence
+persistence:
+  storageClass: ""

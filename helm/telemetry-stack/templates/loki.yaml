@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "telemetry.fullname" . }}-loki-config
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+data:
+  loki-config.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+    common:
+      ring:
+        instance_addr: 127.0.0.1
+        kvstore:
+          store: inmemory
+      replication_factor: 1
+      path_prefix: /tmp/loki
+    compactor:
+      working_directory: /tmp/loki/retention
+      compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+      delete_request_store: filesystem
+    schema_config:
+      configs:
+        - from: 2020-05-15
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    storage_config:
+      filesystem:
+        directory: /tmp/loki/chunks
+    limits_config:
+      retention_period: {{ .Values.loki.retention }}
+      volume_enabled: true
+      allow_structured_metadata: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "telemetry.fullname" . }}-loki
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+    app.kubernetes.io/component: loki
+spec:
+  replicas: {{ .Values.loki.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: loki
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: loki
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: loki
+          image: {{ .Values.loki.image }}
+          args: ["-config.file=/etc/loki/loki-config.yaml"]
+          ports:
+            - containerPort: 3100
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/loki-config.yaml
+              subPath: loki-config.yaml
+            - name: data
+              mountPath: /tmp/loki
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "telemetry.fullname" . }}-loki-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "telemetry.fullname" . }}-loki
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "telemetry.fullname" . }}-loki
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 3100
+      targetPort: 3100
+  selector:
+    app.kubernetes.io/component: loki
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "telemetry.fullname" . }}-loki
+  labels:
+    {{- include "telemetry.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.loki.storage }}
