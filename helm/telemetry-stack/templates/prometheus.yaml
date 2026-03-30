@@ -32,6 +32,15 @@ spec:
         app.kubernetes.io/component: prometheus
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      securityContext:
+        fsGroup: 65534
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ["sh", "-c", "chown -R 65534:65534 /prometheus"]
+          volumeMounts:
+            - name: data
+              mountPath: /prometheus
       containers:
         - name: prometheus
           image: {{ .Values.prometheus.image }}
