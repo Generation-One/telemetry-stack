@@ -17,18 +17,6 @@ data:
               endpoint: "0.0.0.0:4317"
             http:
               endpoint: "0.0.0.0:4318"
-    ingester:
-      trace_idle_period: 10s
-      max_block_bytes: 1000000
-      max_block_duration: 5m
-    compactor:
-      compaction:
-        compaction_window: 1h
-        max_compaction_objects: 1000000
-        block_retention: {{ .Values.tempo.blockRetention }}
-        compacted_block_retention: 10m
-    querier:
-      max_concurrent_queries: 20
     storage:
       trace:
         backend: local
@@ -36,22 +24,8 @@ data:
           path: /tmp/tempo/wal
         local:
           path: /tmp/tempo/blocks
-        pool:
-          max_workers: 100
-          queue_depth: 10000
     memberlist:
       abort_if_cluster_join_fails: false
-    metrics_generator:
-      ring:
-        kvstore:
-          store: memberlist
-      storage:
-        path: /tmp/tempo/generator/wal
-      traces_storage:
-        path: /tmp/tempo/generator/traces
-      registry:
-        collection_interval: 15s
-        stale_duration: 15m
     overrides:
       defaults:
         metrics_generator:
