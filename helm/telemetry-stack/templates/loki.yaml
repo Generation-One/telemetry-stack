@@ -59,6 +59,15 @@ spec:
         app.kubernetes.io/component: loki
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      securityContext:
+        fsGroup: 10001
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ["sh", "-c", "chown -R 10001:10001 /tmp/loki"]
+          volumeMounts:
+            - name: data
+              mountPath: /tmp/loki
       containers:
         - name: loki
           image: {{ .Values.loki.image }}
